@@ -57,6 +57,15 @@ void dump_cards_array() {
 }
 
 
+byte get_checksum(byte* data, byte size) {
+    byte c = 0;
+    for(byte i = 0; i < size; i++) {
+        c ^= (data[i] + i) & 0xff;
+    }
+    return c & 0xff;
+}
+
+
 void play_success_beep() {
     Serial.println("play_success_beep");
 }
@@ -220,34 +229,43 @@ void process_unit_card(Card card) {
 }
 
 /*
-data starts from block 4, each 2 bytes shows a card, for each card:
-bit 0-13 is card no
-bit 14 (bit 6 of high byte) is state
-bit 15 (bit 7 of high byte) if 0 means no data on this and on next words
+data starts from block 4, a word (2 bytes) is used for each card.
+byte 0 of block is number of cards data
+byte 1 to 14 are cards data
+byte 15 is checksum of all previous bytes (0 to 14)
+so on each block there are utmost 7 cards data
+for each card data (2 bytes):
+bit 0-14 is card no
+bit 15 (bit 7 of high byte) is state
+if a block contains less than 7 cards it means there is no data on next records
 */
 boolean process_write_card(Card card) {
     byte block = 4;
     byte data[18];
-    byte i, high, low;
+    byte i, j, high, low;
     int card_no;
-    boolean state, is_data;
+    boolean state;
     char str[150];
+    byte n, chk;
     while (block < 63) {
         if (!read_block_from_card(block, data))
             return false;
-        for (i = 0; i < 16; i += 2) {
-            high = data[i];
-            low = data[i + 1];
-            is_data = (boolean)(high & BIT_7);
-            if (!is_data)
-                break;
-            state = (boolean)(high & BIT_6);
-            card_no = ((high & 0x3f) << 8) | low;
-            sprintf(str, "i=%d  high=%d  low=%d  card_no=%d  state=%d  is_data=%d", i, high, low, card_no, state, is_data);
+        n = data[0];
+        chk = get_checksum(data, 15);
+        if (data[15] != chk) {
+            Serial.println("invalid checksum");
+            return false;
+        }
+        for (i = 0, j = 1; i < n; i++, j += 2) {
+            high = data[j];
+            low = data[j + 1];
+            state = (boolean)(high & 0x80);
+            card_no = ((high & 0x7f) << 8) | low;
+            sprintf(str, "i=%d  high=%02x  low=%02x  card_no=%-3d  state=%d", i, high, low, card_no, state);
             write_state_of_card_to_ram(card_no, state);
             Serial.println(str);
         }
-        if (!is_data)
+        if (n < 7)
             break;
         block += 1;
         if (block % 4 == 3)
@@ -287,8 +305,9 @@ void loop() {
     stop_card_communication();
 
 
-    // byte buf1[] = {0xc0, 0x00, 0x80, 0x03, 0xc0, 0x0a, 0xc0, 0x02, 0x80, 0x01, 0xc0, 0x0c, 0x80, 0x0b, 0xc0, 0x04};
-    // byte buf2[] = {0xc0, 0x06, 0x80, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    // write data on write-card
+    // byte buf1[] = {7, 128, 0, 0, 3, 128, 10, 128, 2, 0, 1, 128, 12, 0, 11, 29};
+    // byte buf2[] = {3, 128, 6, 128, 6, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 11};
     // if (!find_a_new_card())
     //     return;
     // if (!authenticate_to_block(7))
@@ -298,6 +317,7 @@ void loop() {
     // stop_card_communication();
 
 
+    // write 1st record on card
     // byte buf1[] = {CARD_TYPE_UNIT, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     // if (!find_a_new_card())
     //     return;
