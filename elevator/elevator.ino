@@ -3,6 +3,7 @@ see MFRC522 library examples for pin layout
 */
 
 #include <SPI.h>
+#include <EEPROM.h>
 #include <MFRC522.h>
 
 #define RST_PIN 9
@@ -10,10 +11,9 @@ see MFRC522 library examples for pin layout
 #define CARD_TYPE_INVALID 0
 #define CARD_TYPE_UNIT 1
 #define CARD_TYPE_WRITE 2
-#define CARDS_ARRAY_BYTES 2
+#define CARDS_ARRAY_BYTES 4
 #define CARDS_ARRAY_NO_OF_CARDS (CARDS_ARRAY_BYTES * 8)
-#define BIT_6 0x40
-#define BIT_7 0x80
+#define CARDS_ARRAY_EEPROM_ADDR 0
 
 
 struct Card {
@@ -36,6 +36,7 @@ void setup() {
     for (byte i = 0; i < 6; i++) {
         mfrc_key.keyByte[i] = 0xFF;
     }
+    load_cards_array_from_eeprom();
     Serial.println(F("Ready"));
 }
 
@@ -87,12 +88,23 @@ boolean read_state_of_card_from_ram(int card_no) {
 }
 
 
-void write_state_of_card_to_ram(int card_no, boolean state) {
+void write_state_of_card_to_ram_and_eeprom(int card_no, boolean state) {
     int byte_index = card_no / 8;
     byte bit_index = card_no % 8;
     byte mask = 1 << bit_index;
-    byte val = cards_array[byte_index];
-    cards_array[byte_index] = state ? (val | mask) : (val & (~mask));
+    byte old_val = cards_array[byte_index];
+    byte new_val = state ? (old_val | mask) : (old_val & (~mask));
+    if(new_val != old_val) {
+        cards_array[byte_index] = new_val;
+        EEPROM.update(CARDS_ARRAY_EEPROM_ADDR + byte_index, new_val);
+    }
+}
+
+
+void load_cards_array_from_eeprom() {
+    for(int i = 0; i < CARDS_ARRAY_BYTES; i++) {
+        cards_array[i] = EEPROM.read(CARDS_ARRAY_EEPROM_ADDR + i);
+    }
 }
 
 
@@ -262,7 +274,7 @@ boolean process_write_card(Card card) {
             state = (boolean)(high & 0x80);
             card_no = ((high & 0x7f) << 8) | low;
             sprintf(str, "i=%d  high=%02x  low=%02x  card_no=%-3d  state=%d", i, high, low, card_no, state);
-            write_state_of_card_to_ram(card_no, state);
+            write_state_of_card_to_ram_and_eeprom(card_no, state);
             Serial.println(str);
         }
         if (n < 7)
@@ -306,14 +318,14 @@ void loop() {
 
 
     // write data on write-card
-    // byte buf1[] = {7, 128, 0, 0, 3, 128, 10, 128, 2, 0, 1, 128, 12, 0, 11, 29};
-    // byte buf2[] = {3, 128, 6, 128, 6, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 11};
+    // byte buf1[] = {6, 128, 0, 0, 1, 128, 2, 0, 3, 128, 4, 0, 5, 0, 0, 156};
+    // // byte buf2[] = {3, 128, 6, 128, 6, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 11};
     // if (!find_a_new_card())
     //     return;
     // if (!authenticate_to_block(7))
     //     return;
     // write_block_to_card(4, buf1);
-    // write_block_to_card(5, buf2);
+    // // write_block_to_card(5, buf2);
     // stop_card_communication();
 
 
@@ -330,15 +342,19 @@ void loop() {
     // dump_cards_array();
     // Serial.println();
     // for(byte i = 0; i < CARDS_ARRAY_NO_OF_CARDS; i++) {
-    //     write_state_of_card_to_ram(i, i % 2 == 0);
-    // }
-    // dump_cards_array();
-    // Serial.println();
-    // for(byte i = 0; i < CARDS_ARRAY_NO_OF_CARDS; i++) {
     //     write_state_of_card_to_ram(i, i % 3 == 0);
     // }
+
     // dump_cards_array();
     // Serial.println();
+
+
+    // erase eeprom
+    // int n = EEPROM.length();
+    // for(int i = 0; i < n; i++) {
+    //     EEPROM.write(i, 0);
+    // }
+    // Serial.println("Done");
 
     // delay(1000);
     // exit(0);
