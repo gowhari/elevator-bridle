@@ -88,16 +88,12 @@ boolean read_state_of_card_from_ram(int card_no) {
 }
 
 
-void write_state_of_card_to_ram_and_eeprom(int card_no, boolean state) {
-    int byte_index = card_no / 8;
-    byte bit_index = card_no % 8;
-    byte mask = 1 << bit_index;
-    byte old_val = cards_array[byte_index];
-    byte new_val = state ? (old_val | mask) : (old_val & (~mask));
-    if(new_val != old_val) {
-        cards_array[byte_index] = new_val;
-        EEPROM.update(CARDS_ARRAY_EEPROM_ADDR + byte_index, new_val);
-    }
+void write_byte_to_ram_and_eeprom(int index, byte new_val) {
+    byte old_val = cards_array[index];
+    if(new_val == old_val)
+        return;
+    cards_array[index] = new_val;
+    EEPROM.update(CARDS_ARRAY_EEPROM_ADDR + index, new_val);
 }
 
 
@@ -105,11 +101,6 @@ void load_cards_array_from_eeprom() {
     for(int i = 0; i < CARDS_ARRAY_BYTES; i++) {
         cards_array[i] = EEPROM.read(CARDS_ARRAY_EEPROM_ADDR + i);
     }
-}
-
-
-boolean update_disk(int card_no, boolean state) {
-    return true;
 }
 
 
@@ -241,43 +232,47 @@ void process_unit_card(Card card) {
 }
 
 /*
-data starts from block 4, a word (2 bytes) is used for each card.
-byte 0 of block is number of cards data
-byte 1 to 14 are cards data
-byte 15 is checksum of all previous bytes (0 to 14)
-so on each block there are utmost 7 cards data
-for each card data (2 bytes):
-bit 0-14 is card no
-bit 15 (bit 7 of high byte) is state
-if a block contains less than 7 cards it means there is no data on next records
+data starts from block 4 and later
+  on each block there are utmost 5 operative data.
+  5 * 3 bytes = 15 bytes, and last byte of block is checksum.
+in each 3 bytes:
+  two bytes to represent index (index of cards array)
+  and next byte is the value to write on that index.
+bit 15 of index (bit 7 of high byte):
+  1 means there is data to write
+  0 means no data in these 3 bytes and not any more data
+byte 15:
+  is checksum of all previous bytes (0 to 14)
 */
 boolean process_write_card(Card card) {
     byte block = 4;
     byte data[18];
-    byte i, j, high, low;
-    int card_no;
-    boolean state;
-    char str[150];
-    byte n, chk;
-    while (block < 63) {
+    byte i, high, low, value, chk;
+    int index;
+    boolean is_more_data = true;
+    char str[100];
+    while (block < 63 && is_more_data) {
         if (!read_block_from_card(block, data))
             return false;
-        n = data[0];
         chk = get_checksum(data, 15);
         if (data[15] != chk) {
             Serial.println("invalid checksum");
             return false;
         }
-        for (i = 0, j = 1; i < n; i++, j += 2) {
-            high = data[j];
-            low = data[j + 1];
-            state = (boolean)(high & 0x80);
-            card_no = ((high & 0x7f) << 8) | low;
-            sprintf(str, "i=%d  high=%02x  low=%02x  card_no=%-3d  state=%d", i, high, low, card_no, state);
-            write_state_of_card_to_ram_and_eeprom(card_no, state);
+        for (i = 0; i <= 12 ; i += 3) {
+            high = data[i];
+            if(!(high & 0x80)) {
+                is_more_data = false;
+                break;
+            }
+            low = data[i + 1];
+            value = data[i + 2];
+            index = ((high & 0x7f) << 8) | low;
+            write_byte_to_ram_and_eeprom(index, value);
+            sprintf(str, "i=%02d  high=%02x  low=%02x  index=%02x  value=%02x", i, high, low, index, value);
             Serial.println(str);
         }
-        if (n < 7)
+        if(!is_more_data)
             break;
         block += 1;
         if (block % 4 == 3)
@@ -318,35 +313,38 @@ void loop() {
 
 
     // write data on write-card
-    // byte buf1[] = {6, 128, 0, 0, 1, 128, 2, 0, 3, 128, 4, 0, 5, 0, 0, 156};
-    // // byte buf2[] = {3, 128, 6, 128, 6, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 11};
+    // byte buf[][16] = {
+    //     {128, 0, 3, 128, 1, 15, 128, 2, 7, 0, 0, 0, 0, 0, 0, 145},
+    //     {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15},
+    // };
+    // byte rows = sizeof(buf) / 16;
     // if (!find_a_new_card())
     //     return;
     // if (!authenticate_to_block(7))
     //     return;
-    // write_block_to_card(4, buf1);
-    // // write_block_to_card(5, buf2);
+    // for(int i = 0; i < rows; i++) {
+    //     write_block_to_card(i + 4, buf[i]);
+    // }
     // stop_card_communication();
 
 
-    // write 1st record on card
-    // byte buf1[] = {CARD_TYPE_UNIT, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    // // write 1st record on card
+    // // byte buf[] = {CARD_TYPE_UNIT, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    // byte buf[] = {CARD_TYPE_WRITE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     // if (!find_a_new_card())
     //     return;
     // if (!authenticate_to_block(1))
     //     return;
-    // write_block_to_card(1, buf1);
+    // write_block_to_card(1, buf);
     // stop_card_communication();
 
 
+    // // dump cards array
     // dump_cards_array();
     // Serial.println();
-    // for(byte i = 0; i < CARDS_ARRAY_NO_OF_CARDS; i++) {
-    //     write_state_of_card_to_ram(i, i % 3 == 0);
-    // }
+    // delay(1000);
+    // exit(0);
 
-    // dump_cards_array();
-    // Serial.println();
 
 
     // erase eeprom
@@ -355,7 +353,4 @@ void loop() {
     //     EEPROM.write(i, 0);
     // }
     // Serial.println("Done");
-
-    // delay(1000);
-    // exit(0);
 }
