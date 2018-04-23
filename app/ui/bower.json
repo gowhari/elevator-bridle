@@ -1,0 +1,16 @@
+{
+  "name": "elevator",
+  "authors": [
+    "iman gowhari <gowhari@gmail.com>"
+  ],
+  "description": "",
+  "main": "",
+  "license": "MIT",
+  "homepage": "",
+  "private": true,
+  "dependencies": {
+    "angular": "^1.6.5",
+    "sugar": "^2.0.4",
+    "bootstrap": "^3.3.7"
+  }
+}

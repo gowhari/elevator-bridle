@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en" ng-app="app">
+<head>
+  <title>three.js webgl - loaders - 3DS loader</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  <link rel="stylesheet" type="text/css" href="bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" type="text/css" href="app.css">
+  <script type="text/javascript" src="bower_components/angular/angular.min.js"></script>
+  <script type="text/javascript" src="bower_components/sugar/dist/sugar.min.js"></script>
+  <script type="text/javascript">Sugar.extend();</script>
+  <script src="app.js"></script>
+</head>
+<body ng-controller="MainCtrl">
+  <div class="row">
+    <div class="col-sm-4">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Unit</th>
+            <th>Current</th>
+            <th>New</th>
+            <th>Add Cell</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr ng-repeat="i in units" ng-click="on_unit_select(i)" ng-mouseenter="on_unit_mouseenter(i)" ng-mouseleave="on_unit_mouseleave(i)" ng-class="{'success': i == selected_unit}">
+            <td>{{i.name}}</td>
+            <td ng-show="i.permission" class="text-success">OK</td>
+            <td ng-show="!i.permission" class="text-danger">Locked</td>
+            <td>
+              <button class="btn btn-block" ng-click="change_unit_state(i)"
+                ng-class="{'btn-default': i.new_permission == null, 'btn-danger': i.new_permission == false, 'btn-success': i.new_permission == true}">
+                <span ng-show="i.new_permission == null">No Change</span>
+                <span ng-show="i.new_permission == false">Locked</span>
+                <span ng-show="i.new_permission == true">OK</span>
+              </button>
+            </td>
+            <td><button class="btn btn-default" ng-click="add_cell_to_unit(i)">Add</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="col-sm-4">
+      <table class="table table-bordered table-condensed cell-table text-center">
+        <thead>
+          <tr>
+            <th></th>
+            <th>7</th>
+            <th>6</th>
+            <th>5</th>
+            <th>4</th>
+            <th>3</th>
+            <th>2</th>
+            <th>1</th>
+            <th>0</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr ng-repeat="row in cell_view">
+            <td>{{$index}}</td>
+            <td ng-repeat="i in row" ng-click="on_select_cell(i)" ng-class="{'success': i.state == 'on', 'danger': i.state == 'off', 'active': i.state == 'disabled', 'highlight': selected_unit != null && i.unit.id == selected_unit.id, 'selected': i == selected_cell}">
+              <span ng-show="i.new_state != null" ng-class="{'text-success': i.new_state == 'on', 'text-danger': i.new_state == 'off'}">&#x26AB;</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,6 @@
+.cell-table td.highlight {
+    box-shadow:inset 0px 0px 0px 2px #888;
+}
+.cell-table td.selected {
+    box-shadow:inset 0px 0px 0px 2px #58f;
+}
