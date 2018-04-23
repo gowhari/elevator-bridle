@@ -18,6 +18,7 @@ see MFRC522 library examples for pin layout
 #define CMD_CLEAR_NO_CONTROL_MODE 4
 #define CMD_BEEP_FREQ_INC 5
 #define CMD_BEEP_FREQ_DEC 6
+#define CMD_TOGGLE 7
 #define CARDS_ARRAY_BYTES 512
 #define CARDS_ARRAY_NO_OF_CARDS (CARDS_ARRAY_BYTES * 8)
 #define EEPROM_ADDR_CARDS_ARRAY 0
@@ -112,6 +113,12 @@ void play_failure_beep() {
     play_and_wait(beep_freq, 200, 200);
     play_and_wait(beep_freq, 200, 200);
     play_and_wait(beep_freq, 200, 0);
+}
+
+
+void play_toggle_off_beep() {
+    play_and_wait(beep_freq, 50, 50);
+    play_and_wait(beep_freq, 50, 0);
 }
 
 
@@ -282,12 +289,13 @@ bit 15 of index (bit 7 of high byte):
 byte 15:
   is checksum of all previous bytes (0 to 14)
 */
-bool process_update_card() {
+bool process_update_card(bool toggle) {
     byte block = 4;
     byte data[18];
     byte i, high, low, value, chk;
     int index;
     bool is_more_data = true;
+    bool is_toggle_off = false;
     char str[100];
     while (block < 63 && is_more_data) {
         if (!card_helper.read_block_from_card(block, data))
@@ -299,13 +307,17 @@ bool process_update_card() {
         }
         for (i = 0; i <= 12 ; i += 3) {
             high = data[i];
-            if(!(high & 0x80)) {
+            if (!(high & 0x80)) {
                 is_more_data = false;
                 break;
             }
             low = data[i + 1];
             value = data[i + 2];
             index = ((high & 0x7f) << 8) | low;
+            if (toggle && cards_array[index] != 0) {
+                value = 0;
+                is_toggle_off = true;
+            }
             write_byte_to_ram_and_eeprom(index, value);
             sprintf(str, (char*)F("i=%02d  high=%02x  low=%02x  index=%02x  value=%02x"), i, high, low, index, value);
             Serial.println(str);
@@ -316,7 +328,7 @@ bool process_update_card() {
         if (block % 4 == 3)
             block += 1;
     }
-    play_success_beep();
+    is_toggle_off ? play_toggle_off_beep() : play_success_beep();
 }
 
 
@@ -332,11 +344,14 @@ void process_new_card(byte* data) {
         process_unit_card(card);
     }
     else if (card.type == CARD_TYPE_COMMAND && card.no == CMD_UPDATE) {
-        process_update_card();
+        process_update_card(false);
     }
     else if (card.type == CARD_TYPE_COMMAND && card.no == CMD_ERASE_AND_UPDATE) {
         erase_eeprom();
-        process_update_card();
+        process_update_card(false);
+    }
+    else if (card.type == CARD_TYPE_COMMAND && card.no == CMD_TOGGLE) {
+        process_update_card(true);
     }
     else if (card.type == CARD_TYPE_COMMAND && card.no == CMD_SET_NO_CONTROL_MODE) {
         set_no_control_mode(true);
