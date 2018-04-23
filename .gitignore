@@ -1,0 +1,7 @@
+*.pyc
+.pyenv
+.pyenvrc
+__pycache__
+app/server/db.sqlite
+app/ui/bower_components/
+test
